@@ -23,11 +23,23 @@ public class NioServer {
 		while(true){
 			int keySize = selector.select();
 			if(keySize > 0){
-				Iterator<SelectionKey> keyIt = selector.keys().iterator();
+				Iterator<SelectionKey> keyIt = selector.selectedKeys().iterator();
 				while(keyIt.hasNext()){
 					SelectionKey key = keyIt.next();
+					keyIt.remove();
 					System.out.println(key);
-					handleSelectionKey(key, selector);
+					try{
+						handleSelectionKey(key, selector);
+					}catch(IOException e){
+						e.printStackTrace();
+						try{
+							System.out.println("close channel");
+							key.channel().close();
+							key.cancel();
+						}catch(Exception ex){
+							//ignore
+						}
+					}
 				}
 			}
 		}
@@ -55,7 +67,10 @@ public class NioServer {
 		}
 		if(key.isAcceptable()){
 			System.out.println("A client connecting");
-			key.channel().register(selector, SelectionKey.OP_CONNECT);
+			ServerSocketChannel server = (ServerSocketChannel) key.channel();
+			SocketChannel channel = server.accept();
+			channel.configureBlocking(false);
+			channel.register(selector, SelectionKey.OP_READ);
 			return;
 		}
 		if(key.isConnectable()){
@@ -64,30 +79,42 @@ public class NioServer {
 			return;
 		}
 		if(key.isReadable()){
-			ByteBuffer buffer = ByteBuffer.allocate(256);
+			System.out.println("readable event");
+			StringBuilder sb = new StringBuilder("from clien: ");
 			SocketChannel channel = (SocketChannel) key.channel();
-			int readBytes = channel.read(buffer);
-			if(readBytes == -1){
+			if(!readFromClient(sb, channel)){
 				System.out.println("remote client closed 2");
 				key.cancel();
 				channel.close();
 				return;
 			}
-			if(readBytes > 0){
-				buffer.flip();
-				StringBuilder sb = new StringBuilder("from clien: ");
-				while(buffer.hasRemaining()){
-					sb.append((char)buffer.get());
-				}
-				buffer.clear();
-				buffer.put("from server: hi".getBytes());
-				channel.write(buffer);
-			}
+			System.out.println(sb.toString());
+			ByteBuffer wBuffer = ByteBuffer.allocate(256);
+			wBuffer.put(("from server: hi, " + sb.append(";").toString()).getBytes());
+			wBuffer.flip();
+			channel.write(wBuffer);
 			return;
 		}
 		if(key.isWritable()){
 			
 		}
+	}
+
+	private boolean readFromClient(StringBuilder sb, SocketChannel channel) throws IOException {
+		ByteBuffer buffer = ByteBuffer.allocate(2);
+        int readBytes = channel.read(buffer);
+        if(readBytes == -1){
+        	return false;
+        }
+		while(readBytes > 0){
+			buffer.flip();
+			while(buffer.hasRemaining()){
+				sb.append((char)buffer.get());
+			}
+			buffer.clear();
+			readBytes = channel.read(buffer);
+		}
+		return true;
 	}
 
 	public static void main(String[] args) {

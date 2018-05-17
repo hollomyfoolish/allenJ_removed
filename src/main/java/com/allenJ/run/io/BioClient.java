@@ -20,10 +20,19 @@ public class BioClient {
 			BufferedReader userInput = new BufferedReader(new InputStreamReader(System.in, "UTF-8"));
 			for(String i = userInput.readLine(); i != null; i = userInput.readLine()){
 				System.out.println("user input: " + i);
+				if("quit".equalsIgnoreCase(i)){
+					in.close();
+					out.close();
+					client.close();
+					System.out.println("end connetion");
+					return;
+				}
 				out.write(i.getBytes());
 				out.flush();
 				if(i.endsWith(";")){
-					readFromServer(in);
+					if(!readFromServer(in)){
+						break;
+					}
 				}
 			}
 		} catch (IOException e) {
@@ -31,13 +40,18 @@ public class BioClient {
 		}
 	}
 
-	private static void readFromServer(InputStream in) throws IOException {
+	private static boolean readFromServer(InputStream in) throws IOException {
 		StringBuilder sb = new StringBuilder();
-		char c;
-		while((c = (char)in.read()) != ';'){
-			sb.append(c);
+		int c = in.read();
+		if(c == -1){
+			return false;
+		}
+		while((char)c != ';'){
+			sb.append((char)c);
+			c = in.read();
 		}
 		System.out.println("from server: " + sb.toString());
+		return true;
 	}
 
 }
